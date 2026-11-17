@@ -42,6 +42,10 @@
   <div id="contenuto"></div>
 </div>
 
+<div id="avviso" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:99">
+  <div style="background:#fff; margin:120px auto; width:300px; padding:20px">
+    <p>Attenzione: avviso di prova</p><button id="okAvviso">OK</button></div>
+</div>
 <script>
 const soggetti = [];
 for (let i = 1; i <= 23; i++) {
@@ -78,7 +82,13 @@ function disegna() {
   $('indietro').style.display = vista === 'soggetti' ? 'none' : '';
 }
 
-$('lente').onclick = () => { $('modale').style.display = 'block'; disegna(); };
+let apertureRicerca = 0, avvisi = 0;
+$('okAvviso').onclick = () => { $('avviso').style.display = 'none'; };
+$('lente').onclick = () => {
+  $('modale').style.display = 'block'; disegna();
+  if (++apertureRicerca % 4 === 0) { avvisi++; document.title = 'avvisi ' + avvisi; $('avviso').style.display = 'block'; }
+  if (apertureRicerca % 7 === 0) { setTimeout(() => alert('Avviso del browser di prova'), 50); }
+};
 $('chiudi').onclick = () => { $('modale').style.display = 'none'; };
 $('indietro').onclick = () => { vista = 'soggetti'; pagina = 0; $('cerca').value = ''; disegna(); };
 $('cerca').oninput = () => { pagina = 0; disegna(); };

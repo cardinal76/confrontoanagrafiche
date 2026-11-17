@@ -4,6 +4,10 @@ import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,6 +28,28 @@ public class InpsDownloader extends InpsBase {
     private static final String VISTA_POSIZIONI = "per selezionarla";
     private static final String VOCE_MENU = "Dati Sintetici";
     private static final String GRUPPO_MENU = "Dati sintetici";
+
+    static final String FILE_APRI_RICERCA = "inps-apri-ricerca.txt";
+
+    /** Registra nella pagina il percorso CSS dell'ultimo elemento cliccato dall'utente. */
+    private static final String REGISTRA_CLIC = """
+            () => {
+              window.__clicAppreso = null;
+              document.addEventListener('click', e => {
+                let el = e.target;
+                const parti = [];
+                while (el && el.nodeType === 1 && el !== document.body) {
+                  if (el.id) { parti.unshift('#' + CSS.escape(el.id)); break; }
+                  let n = 1, s = el;
+                  while ((s = s.previousElementSibling)) { if (s.tagName === el.tagName) n++; }
+                  parti.unshift(el.tagName.toLowerCase() + ':nth-of-type(' + n + ')');
+                  el = el.parentElement;
+                }
+                if (!parti[0].startsWith('#')) { parti.unshift('body'); }
+                window.__clicAppreso = parti.join(' > ');
+              }, true);
+            }
+            """;
 
     private String cfInVista;
 
@@ -230,35 +256,93 @@ public class InpsDownloader extends InpsBase {
     // ------------------------------------------------------------------ ricerca avanzata
 
     private void apriRicerca() {
-        if (visibile(VISTA_SOGGETTI) || visibile(VISTA_POSIZIONI)) {
+        if (ricercaAperta()) {
             return;
         }
-        List<String> selettori = new ArrayList<>(elenco(cfg.opt("inps.sel.apriRicerca")));
-        selettori.addAll(List.of(".fa-search", ".fa-magnifying-glass", "text=Ricerca avanzata"));
+        // 1) selettori noti: quello imparato in una esecuzione precedente, quello in configurazione, i piu' comuni
+        List<String> selettori = new ArrayList<>();
+        Path appreso = dir.resolve(FILE_APRI_RICERCA);
+        try {
+            if (Files.exists(appreso)) {
+                selettori.add(Files.readString(appreso, StandardCharsets.UTF_8).trim());
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        selettori.addAll(elenco(cfg.opt("inps.sel.apriRicerca")));
+        selettori.addAll(List.of(".fa-search", ".fa-magnifying-glass", ".glyphicon-search", "[class*='search' i]",
+                "[title*='icerca' i]", "[aria-label*='icerca' i]", "[onclick*='icerca' i]", "[href*='icerca' i]",
+                "[data-target*='icerca' i]", "text=Ricerca avanzata"));
+        List<Locator> candidati = new ArrayList<>();
         for (String sel : selettori) {
+            if (!sel.isEmpty()) {
+                candidati.add(app().locator(sel));
+            }
+        }
+        // 2) gli elementi cliccabili subito dopo il campo "Posizione contributiva" del menu (la lente)
+        candidati.add(app().locator("input[placeholder*='osizione' i]").first()
+                .locator("xpath=following::*[self::button or self::a or self::i or self::span][position() <= 4]"));
+        for (Locator gruppo : candidati) {
             try {
-                for (Locator candidato : visibili(app().locator(sel)).all()) {
+                for (Locator candidato : visibili(gruppo).all()) {
                     candidato.click(new Locator.ClickOptions().setTimeout(2000));
-                    if (attendiSenzaErrore(() -> visibile(VISTA_SOGGETTI) || visibile(VISTA_POSIZIONI), 3000)) {
+                    if (attendiSenzaErrore(this::ricercaAperta, 3000)) {
                         return;
                     }
                 }
             } catch (RuntimeException ignorata) {
-                // selettore non adatto: si prova il successivo
+                // candidato non adatto: si prova il successivo
             }
         }
+
+        // 3) si chiede all'utente di aprirla una volta e si memorizza dove ha cliccato
         diagnostica("apertura-ricerca");
-        chiedi("Non riesco ad aprire la Ricerca avanzata: aprila tu nel browser, poi premi INVIO");
-        attendi(() -> visibile(VISTA_SOGGETTI) || visibile(VISTA_POSIZIONI), 15000, "Ricerca avanzata");
+        for (Frame f : page.frames()) {
+            try {
+                f.evaluate(REGISTRA_CLIC);
+            } catch (RuntimeException ignorata) {
+                // frame non accessibile
+            }
+        }
+        chiedi("Non riesco ad aprire la Ricerca avanzata: aprila tu nel browser con un clic, poi premi INVIO.\n"
+                + "Memorizzo dove clicchi, cosi' dalla prossima volta la apro da solo.");
+        attendi(this::ricercaAperta, 15000, "Ricerca avanzata");
+        for (Frame f : page.frames()) {
+            try {
+                Object percorso = f.evaluate("() => window.__clicAppreso || null");
+                if (percorso != null && !percorso.toString().isBlank()) {
+                    Files.writeString(appreso, percorso.toString(), StandardCharsets.UTF_8);
+                    log("Ho memorizzato come aprire la Ricerca avanzata (" + FILE_APRI_RICERCA + ")");
+                    break;
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } catch (RuntimeException ignorata) {
+                // frame non accessibile
+            }
+        }
+    }
+
+    private boolean ricercaAperta() {
+        return visibile(VISTA_SOGGETTI) || visibile(VISTA_POSIZIONI);
     }
 
     /** Se la Ricerca avanzata mostra le posizioni di un soggetto, torna all'elenco dei soggetti. */
     private void mostraElencoSoggetti() {
-        if (visibile(VISTA_POSIZIONI)) {
-            visibili(app().getByText("Torna indietro")).first().click();
-        }
-        attendi(() -> visibile(VISTA_SOGGETTI), 15000, "elenco dei soggetti");
         cfInVista = null;
+        attendi(() -> {
+            if (visibile(VISTA_SOGGETTI)) {
+                return true;
+            }
+            if (visibile(VISTA_POSIZIONI)) {
+                try {
+                    visibili(app().getByText("Torna indietro")).first().click(new Locator.ClickOptions().setTimeout(3000));
+                } catch (RuntimeException ignorata) {
+                    // si riprova al giro successivo
+                }
+            }
+            return false;
+        }, 20000, "elenco dei soggetti");
     }
 
     /** Imposta "Visualizza N elementi" al valore piu' alto, per ridurre le pagine da scorrere. */

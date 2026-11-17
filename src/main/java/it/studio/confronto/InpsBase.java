@@ -39,6 +39,10 @@ public abstract class InpsBase {
 
     private static final int MAX_DIAGNOSTICHE = 10;
 
+    /** Pulsanti la cui scritta e' esattamente "OK" (maiuscole o minuscole). */
+    private static final String PULSANTE_OK = ":is(button, a, [role='button']):text-matches('^\\s*ok\\s*$', 'i'), "
+            + "input:is([type='button'], [type='submit'])[value='ok' i]";
+
     protected final Page page;
     protected final Config cfg;
     protected final Path dir;
@@ -64,6 +68,30 @@ public abstract class InpsBase {
         this.gestioniAmmesse = elenco(cfg.opt("inps.gestioni", "Aziende DM"));
         this.statiEsclusi = elenco(cfg.opt("inps.stati.esclusi", "Cessata"));
         page.setDefaultTimeout(15000);
+
+        // Avvisi del portale: basta confermare con OK.
+        // a) finestre di avviso del browser (alert/confirm)
+        page.context().onDialog(avviso -> {
+            log("  Avviso del portale: \"" + avviso.message() + "\" -> OK");
+            avviso.accept();
+        });
+        // b) riquadri di avviso dentro la pagina: Playwright li chiude prima di ogni clic che ne verrebbe bloccato
+        page.addLocatorHandler(page.locator(PULSANTE_OK).first(), ok -> {
+            log("  Avviso del portale -> OK");
+            ok.click();
+        });
+    }
+
+    /** Conferma con OK gli avvisi presenti in qualsiasi frame (quelli negli iframe sfuggono al gestore automatico). */
+    protected void chiudiAvvisi() {
+        for (Locator ok : trova(f -> f.locator(PULSANTE_OK))) {
+            try {
+                ok.click(new Locator.ClickOptions().setTimeout(2000));
+                log("  Avviso del portale -> OK");
+            } catch (RuntimeException ignorata) {
+                // l'avviso si e' gia' chiuso
+            }
+        }
     }
 
     private long secondi(String chiave, String predefinito) {
@@ -106,6 +134,9 @@ public abstract class InpsBase {
         int elaborati = 0;
         int erroriDiFila = 0;
         try {
+            // secondo giro automatico sui soli soggetti rimasti indietro per un errore o senza inquadramento
+            for (int giro = 1; giro <= 2; giro++) {
+            int rimasti = 0;
             for (int i = 0; i < soggetti.size(); i++) {
                 String cf = soggetti.get(i).get(0);
                 if (completati.contains(cf)) {
@@ -121,11 +152,15 @@ public abstract class InpsBase {
                     if (esito.isEmpty()) {
                         Files.writeString(dir.resolve(FILE_COMPLETATI), cf + System.lineSeparator(),
                                 StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                        completati.add(cf);
+                    } else {
+                        rimasti++;
                     }
                     log(String.format("[%d/%d] %s: fatto%s", i + 1, soggetti.size(), cf,
                             esito.isEmpty() ? "" : " (" + esito + ")"));
                     erroriDiFila = 0;
                 } catch (RuntimeException e) {
+                    rimasti++;
                     erroriDiFila++;
                     String msg = String.valueOf(e.getMessage()).lines().findFirst().orElse("");
                     log(String.format("[%d/%d] %s: ERRORE %s", i + 1, soggetti.size(), cf, msg));
@@ -137,6 +172,13 @@ public abstract class InpsBase {
                         erroriDiFila = 0;
                     }
                 }
+            }
+            if (rimasti == 0 || (limite > 0 && elaborati >= limite)) {
+                break;
+            }
+            if (giro == 1) {
+                log("Secondo giro sui " + rimasti + " soggetti rimasti indietro");
+            }
             }
         } finally {
             scriviXlsx();
@@ -310,6 +352,7 @@ public abstract class InpsBase {
             if (condizione.getAsBoolean()) {
                 return true;
             }
+            chiudiAvvisi();
             page.waitForTimeout(250);
         }
         return condizione.getAsBoolean();
