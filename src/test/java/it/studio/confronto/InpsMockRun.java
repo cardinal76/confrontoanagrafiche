@@ -21,7 +21,7 @@ public class InpsMockRun {
         Files.createDirectories(lavoro);
         Path config = lavoro.resolve("config.properties");
         if (!Files.exists(config)) {
-            Files.writeString(config, "pausa.secondi=0\ninps.attesa.secondi=2\ninps.limite=0\n");
+            Files.writeString(config, "pausa.secondi=0\ninps.attesa.secondi=2\ninps.limite=0\ninps.pausa.selezione.secondi=0.1\n");
         }
         Path mock = Path.of("src/test/resources/mock-inps.html").toAbsolutePath();
 

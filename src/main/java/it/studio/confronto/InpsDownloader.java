@@ -44,7 +44,6 @@ public class InpsDownloader {
     private static final String VISTA_POSIZIONI = "per selezionarla";
     private static final String VOCE_MENU = "Dati Sintetici";
     private static final String GRUPPO_MENU = "Dati sintetici";
-    private static final int TENTATIVI = 3;
     private static final int MAX_DIAGNOSTICHE = 10;
 
     private final Page page;
@@ -53,6 +52,8 @@ public class InpsDownloader {
     private final Scanner tastiera;
     private final long pausaMs;
     private final long attesaMs;
+    private final long pausaSelezioneMs;
+    private final int tentativi;
     private final List<String> gestioniAmmesse;
     private final List<String> statiEsclusi;
 
@@ -66,6 +67,8 @@ public class InpsDownloader {
         this.tastiera = tastiera;
         this.pausaMs = (long) (Double.parseDouble(cfg.opt("pausa.secondi", "2")) * 1000);
         this.attesaMs = (long) (Double.parseDouble(cfg.opt("inps.attesa.secondi", "20")) * 1000);
+        this.pausaSelezioneMs = (long) (Double.parseDouble(cfg.opt("inps.pausa.selezione.secondi", "2")) * 1000);
+        this.tentativi = Integer.parseInt(cfg.opt("inps.tentativi", "4"));
         this.gestioniAmmesse = elenco(cfg.opt("inps.gestioni", "Aziende DM"));
         this.statiEsclusi = elenco(cfg.opt("inps.stati.esclusi", "Cessata"));
         page.setDefaultTimeout(15000);
@@ -281,15 +284,22 @@ public class InpsDownloader {
     /** Seleziona la posizione e legge i dati sintetici; se la finestra resta vuota la chiude e riprova. */
     private Map<String, String> leggiPosizione(String cf, String posizione) {
         Map<String, String> migliore = Map.of();
-        for (int tentativo = 1; tentativo <= TENTATIVI; tentativo++) {
+        for (int tentativo = 1; tentativo <= tentativi; tentativo++) {
             posizioni(cf);
             visibili(app().locator("td").getByText(posizione, new Locator.GetByTextOptions().setExact(true)))
                     .first().click();
             cfInVista = null;
+            // il portale ha bisogno di un attimo per registrare la posizione scelta, altrimenti
+            // la finestra risponde "Ticket non valido"; ad ogni nuovo tentativo si aspetta di piu'
+            page.waitForTimeout(pausaSelezioneMs * tentativo);
             apriDatiSintetici();
 
             long scadenza = System.currentTimeMillis() + attesaMs;
             while (System.currentTimeMillis() < scadenza) {
+                if (erroreInFinestra()) {
+                    log("  " + posizione + ": la finestra mostra un messaggio di errore del portale");
+                    break;
+                }
                 Map<String, String> dati = datiInFinestra(posizione);
                 if (!dati.isEmpty()) {
                     migliore = dati;
@@ -303,7 +313,7 @@ public class InpsDownloader {
             if (!migliore.getOrDefault(DatiSinteticiParser.CSC, "").isEmpty()) {
                 return migliore;
             }
-            log("  " + posizione + ": dati sintetici non caricati, tentativo " + tentativo + " di " + TENTATIVI);
+            log("  " + posizione + ": dati sintetici non caricati, tentativo " + tentativo + " di " + tentativi);
         }
         if (migliore.isEmpty()) {
             throw new IllegalArgumentException("Dati sintetici vuoti per la posizione " + posizione);
@@ -340,6 +350,21 @@ public class InpsDownloader {
             }
         }
         return Map.of();
+    }
+
+    /** La finestra mostra un errore del portale (es. "500 - Ticket non valido") invece dei dati. */
+    private boolean erroreInFinestra() {
+        for (Frame f : page.frames()) {
+            try {
+                if (visibili(f.getByText("Ticket non valido")).count() > 0
+                        || visibili(f.getByText("Messaggio di Avviso")).count() > 0) {
+                    return true;
+                }
+            } catch (RuntimeException ignorata) {
+                // frame sparito nel frattempo
+            }
+        }
+        return false;
     }
 
     private boolean finestraAperta() {
