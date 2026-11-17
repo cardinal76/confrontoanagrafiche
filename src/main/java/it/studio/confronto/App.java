@@ -38,11 +38,11 @@ public class App {
 
                 System.out.println();
                 System.out.println("Accedi con SPID ed entra nel Cassetto Previdenziale del Contribuente,");
-                System.out.println("fino a vedere la pagina \"La tua scrivania\". Poi premi INVIO qui.");
+                System.out.println("fino a vedere il menu del cassetto. Poi premi INVIO qui.");
                 tastiera.nextLine();
 
                 Page cassetto = schedaDelCassetto(ctx, page);
-                boolean nuovo = !cfg.opt("inps.flusso", "nuovo").equalsIgnoreCase("vecchio");
+                boolean nuovo = !cfg.opt("inps.flusso", "vecchio").equalsIgnoreCase("vecchio");
                 System.out.println("Interfaccia del cassetto: " + (nuovo ? "nuova" : "vecchia") + " (inps.flusso)");
                 InpsBase scaricatore = nuovo
                         ? new InpsNuovoDownloader(cassetto, cfg, base, tastiera)
