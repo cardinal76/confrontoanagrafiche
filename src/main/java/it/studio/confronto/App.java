@@ -5,6 +5,7 @@ import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -31,11 +32,7 @@ public class App {
             BrowserType.LaunchPersistentContextOptions opzioni =
                     new BrowserType.LaunchPersistentContextOptions().setHeadless(false).setViewportSize(null)
                             .setArgs(List.of("--start-maximized"));
-            String canale = cfg.opt("browser.channel");
-            if (!canale.isEmpty()) {
-                opzioni.setChannel(canale);
-            }
-            try (BrowserContext ctx = pw.chromium().launchPersistentContext(base.resolve("profilo-browser"), opzioni)) {
+            try (BrowserContext ctx = apriBrowser(pw, base.resolve("profilo-browser"), opzioni, cfg.opt("browser.channel"))) {
                 Page page = ctx.pages().isEmpty() ? ctx.newPage() : ctx.pages().get(0);
                 page.navigate(cfg.opt("inps.url.login", "https://www.inps.it/"));
 
@@ -47,6 +44,20 @@ public class App {
                 new InpsDownloader(schedaDelCassetto(ctx, page), cfg, base, tastiera).esegui();
             }
         }
+    }
+
+    /** Usa il browser installato indicato in configurazione; se non c'e' ripiega sul Chromium di Playwright. */
+    private static BrowserContext apriBrowser(Playwright pw, Path profilo,
+                                              BrowserType.LaunchPersistentContextOptions opzioni, String canale) {
+        if (!canale.isEmpty()) {
+            try {
+                return pw.chromium().launchPersistentContext(profilo, opzioni.setChannel(canale));
+            } catch (PlaywrightException e) {
+                System.out.println("Browser '" + canale + "' non disponibile: uso il Chromium di Playwright.");
+                opzioni.setChannel((String) null);
+            }
+        }
+        return pw.chromium().launchPersistentContext(profilo, opzioni);
     }
 
     /** Il cassetto puo' aprirsi in una nuova scheda: si sceglie quella che contiene il suo menu. */
