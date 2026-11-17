@@ -51,8 +51,8 @@ public final class ExcelIO {
         return new ArrayList<>(codici);
     }
 
-    /** Converte un CSV di salvataggio in Excel, con tutte le celle come testo (non si perdono gli zeri iniziali). */
-    public static void csvInXlsx(Path csv, Path xlsx, List<String> testata) throws IOException {
+    /** Scrive una tabella con tutte le celle come testo (non si perdono gli zeri iniziali). */
+    public static void scriviTabella(Path xlsx, List<String> testata, List<List<String>> righe) throws IOException {
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet foglio = wb.createSheet("Dati");
             CellStyle grassetto = wb.createCellStyle();
@@ -67,7 +67,7 @@ public final class ExcelIO {
                 foglio.setColumnWidth(i, 24 * 256);
             }
             int n = 1;
-            for (List<String> campi : Csv.leggi(csv)) {
+            for (List<String> campi : righe) {
                 Row riga = foglio.createRow(n++);
                 for (int i = 0; i < campi.size(); i++) {
                     riga.createCell(i).setCellValue(campi.get(i));

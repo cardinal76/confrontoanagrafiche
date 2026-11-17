@@ -12,7 +12,7 @@ import java.util.Scanner;
 
 /**
  * Prova lo scaricatore INPS su una pagina finta (src/test/resources/mock-inps.html).
- * Argomenti: cartella di lavoro, percorso dell'eseguibile di Chromium.
+ * Argomenti: cartella di lavoro, percorso dell'eseguibile di Chromium, "nuovo" per la nuova interfaccia.
  */
 public class InpsMockRun {
 
@@ -23,7 +23,8 @@ public class InpsMockRun {
         if (!Files.exists(config)) {
             Files.writeString(config, "pausa.secondi=0\ninps.attesa.secondi=2\ninps.limite=0\ninps.pausa.selezione.secondi=0.1\n");
         }
-        Path mock = Path.of("src/test/resources/mock-inps.html").toAbsolutePath();
+        boolean nuovo = args.length > 2 && args[2].equals("nuovo");
+        Path mock = Path.of("src/test/resources/" + (nuovo ? "mock-inps-nuovo.html" : "mock-inps.html")).toAbsolutePath();
 
         try (Playwright pw = Playwright.create()) {
             BrowserType.LaunchPersistentContextOptions opzioni = new BrowserType.LaunchPersistentContextOptions()
@@ -33,7 +34,10 @@ public class InpsMockRun {
                 page.navigate(mock.toUri().toString());
                 // tastiera vuota: se lo scaricatore chiede un intervento manuale la prova fallisce
                 Scanner tastiera = new Scanner(new ByteArrayInputStream(new byte[0]));
-                new InpsDownloader(page, new Config(config), lavoro, tastiera).esegui();
+                InpsBase scaricatore = nuovo
+                        ? new InpsNuovoDownloader(page, new Config(config), lavoro, tastiera)
+                        : new InpsDownloader(page, new Config(config), lavoro, tastiera);
+                scaricatore.esegui();
             }
         }
     }

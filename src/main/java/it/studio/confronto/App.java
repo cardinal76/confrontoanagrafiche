@@ -37,11 +37,17 @@ public class App {
                 page.navigate(cfg.opt("inps.url.login", "https://www.inps.it/"));
 
                 System.out.println();
-                System.out.println("Accedi con SPID ed entra nel Cassetto Previdenziale Contribuente,");
-                System.out.println("fino a vedere il menu a sinistra. Poi premi INVIO qui.");
+                System.out.println("Accedi con SPID ed entra nel Cassetto Previdenziale del Contribuente,");
+                System.out.println("fino a vedere la pagina \"La tua scrivania\". Poi premi INVIO qui.");
                 tastiera.nextLine();
 
-                new InpsDownloader(schedaDelCassetto(ctx, page), cfg, base, tastiera).esegui();
+                Page cassetto = schedaDelCassetto(ctx, page);
+                boolean nuovo = !cfg.opt("inps.flusso", "nuovo").equalsIgnoreCase("vecchio");
+                System.out.println("Interfaccia del cassetto: " + (nuovo ? "nuova" : "vecchia") + " (inps.flusso)");
+                InpsBase scaricatore = nuovo
+                        ? new InpsNuovoDownloader(cassetto, cfg, base, tastiera)
+                        : new InpsDownloader(cassetto, cfg, base, tastiera);
+                scaricatore.esegui();
             }
         }
     }
@@ -65,7 +71,8 @@ public class App {
         for (Page p : ctx.pages()) {
             for (Frame f : p.frames()) {
                 try {
-                    if (f.getByText("Dati di dettaglio").count() > 0) {
+                    if (f.getByText("Dati di dettaglio").count() > 0 || f.getByText("Ricerca Posizione").count() > 0
+                            || f.getByText("Deseleziona Posizione").count() > 0) {
                         p.bringToFront();
                         return p;
                     }

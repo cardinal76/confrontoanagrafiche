@@ -27,6 +27,7 @@ public final class DatiSinteticiParser {
             "Attività Dichiarata", "Accentramento", "Descrizione Accentramento", CSC,
             "Codice ISTAT attività economica", ATECO, ETICHETTA_ATECO, "Descrizione Inquadramento");
 
+    private static final int MAX_RIGHE_VALORE = 3;
     private static final Map<String, String> ETICHETTE = new LinkedHashMap<>();
     private static final Set<String> SEZIONI = Set.of("dati generali", "inquadramento", "storico inquadramento");
 
@@ -56,6 +57,10 @@ public final class DatiSinteticiParser {
         }
         int inizio = indiceSezione(righe, "dati generali", 0);
         if (inizio < 0) {
+            // la nuova interfaccia puo' mostrare l'inquadramento senza la sezione dei dati generali
+            inizio = indiceSezione(righe, "inquadramento", 0);
+        }
+        if (inizio < 0) {
             return dati;
         }
         int fine = indiceSezione(righe, "storico inquadramento", inizio);
@@ -64,6 +69,7 @@ public final class DatiSinteticiParser {
         }
 
         String corrente = null;
+        int righeValore = 0;
         for (int i = inizio + 1; i < fine; i++) {
             List<String> riga = righe.get(i);
             // impaginazione a tabella: una riga di sole etichette seguita da una riga di valori
@@ -82,10 +88,13 @@ public final class DatiSinteticiParser {
                 if (campo != null) {
                     registra(dati, cella, "");
                     corrente = campo;
+                    righeValore = 0;
                 } else if (SEZIONI.contains(norm(cella))) {
                     corrente = null;
-                } else if (corrente != null) {
+                } else if (corrente != null && righeValore < MAX_RIGHE_VALORE) {
+                    // un valore puo' andare a capo, ma non oltre: il resto e' altro testo della pagina
                     dati.merge(corrente, cella, (a, b) -> a.isEmpty() ? b : a + " " + b);
+                    righeValore++;
                 }
             }
         }

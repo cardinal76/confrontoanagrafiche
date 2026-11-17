@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Nuovo cassetto finto per le prove</title>
+<style>
+  body { font-family: sans-serif; margin: 0 0 0 230px; }
+  #menu { position: fixed; left: 0; top: 0; width: 210px; bottom: 0; border-right: 1px solid #ccc; padding: 8px; }
+  #menu div { padding: 6px; cursor: pointer; }
+  td a { color: #06c; cursor: pointer; text-decoration: underline; }
+  .campo { display: inline-block; width: 30%; vertical-align: top; margin: 8px 0; }
+  .campo b, .campo span { display: block; }
+  #dialogo { display: none; position: fixed; left: 300px; top: 150px; background: #fff; border: 2px solid #333; padding: 20px; }
+  .nascosto { display: none; }
+</style>
+</head>
+<body>
+<div id="menu">
+  <div id="voce">Dati sintetici</div>
+  <div>Dati di dettaglio</div>
+</div>
+
+<div id="home">
+  <h1>Cassetto Previdenziale Del Contribuente</h1>
+  <h3>La tua scrivania</h3>
+  <button id="apri">Ricerca Posizione</button>
+</div>
+
+<div id="ricerca" class="nascosto">
+  <h2>Ricerca Avanzata</h2>
+  <label>Posizione contributiva <input placeholder="Digitare posizione contributiva"></label>
+  <button>Seleziona posizione</button>
+  <h3>Elenco posizioni contributive</h3>
+  <label>Filtra per codice fiscale o denominazione
+    <input id="filtro" placeholder="Digitare codice fiscale o denominazione soggetto"></label>
+  <table><thead id="testa"></thead><tbody id="corpo"></tbody></table>
+  <div><span>Elementi per pagina:</span> <span>20</span> <span id="info"></span>
+    <button id="prec">&lt;</button><button id="succ">&gt;</button></div>
+</div>
+
+<div id="scheda" class="nascosto">
+  <div><a id="casa">Home del servizio</a> / Posizione Contributiva</div>
+  <h1>Posizione Contributiva</h1>
+  <div id="dettaglio"></div>
+  <div id="applicazione"></div>
+</div>
+
+<div id="dialogo">
+  <h3>Vuoi deselezionare la posizione contributiva?</h3>
+  <button id="annulla">Annulla</button> <button id="conferma">Conferma</button>
+</div>
+
+<script>
+const soggetti = [];
+for (let i = 1; i <= 23; i++) {
+  const cf = String(1000000000 + i * 7919).padStart(11, '0');
+  const posizioni = [{ pos: String(9200000000 + i), gestione: 'Aziende DM', stato: i % 5 === 0 ? 'Cessata' : 'Attiva' }];
+  if (i % 4 === 0) posizioni.push({ pos: String(9300000000 + i), gestione: 'Aziende DM', stato: 'Riattivata' });
+  if (i % 6 === 0) posizioni.push({ pos: String(1100000000 + i), gestione: 'Artigiani', stato: 'Attiva' });
+  soggetti.push({ cf, nome: 'AZIENDA DI PROVA ' + i, posizioni });
+}
+const conErrore = [9200000003, 9300000008].map(String);   // al primo tentativo danno "Ticket non valido"
+const aperture = {};
+const PER_PAGINA = 20;
+let pagina = 0, corrente = null, selezionata = null;
+const $ = id => document.getElementById(id);
+const mostra = id => ['home', 'ricerca', 'scheda'].forEach(x => $(x).className = x === id ? '' : 'nascosto');
+
+function disegna() {
+  let righe, testa;
+  if (!corrente) {
+    const filtro = $('filtro').value.toLowerCase();
+    testa = ['Cod. Fiscale Soggetto', 'Denominazione Soggetto'];
+    righe = soggetti.filter(s => (s.cf + s.nome).toLowerCase().includes(filtro))
+      .map(s => `<tr><td><a data-cf="${s.cf}">${s.cf}</a></td><td>${s.nome}</td></tr>`);
+  } else {
+    testa = ['Cod. Fiscale Soggetto', 'Gestione', 'Posizione Contributiva', 'Descrizione Azienda', 'Sede', 'Stato'];
+    righe = corrente.posizioni.map(p => `<tr><td><a>${corrente.cf}</a></td><td>${p.gestione}</td><td><a data-pos="${p.pos}">${p.pos}</a></td><td>${corrente.nome}</td><td>9200 VITERBO</td><td>${p.stato}</td></tr>`);
+  }
+  const da = pagina * PER_PAGINA, a = Math.min(da + PER_PAGINA, righe.length);
+  $('testa').innerHTML = '<tr>' + testa.map(t => `<th>${t}</th>`).join('') + '</tr>';
+  $('corpo').innerHTML = righe.slice(da, a).join('');
+  $('info').textContent = `${righe.length ? da + 1 : 0} - ${a} di ${righe.length} elementi`;
+  $('succ').dataset.fine = a >= righe.length ? '1' : '';
+}
+
+$('apri').onclick = () => { mostra('ricerca'); disegna(); };
+$('casa').onclick = () => mostra('home');
+// svuotare il filtro riporta all'elenco dei soggetti
+$('filtro').oninput = () => { pagina = 0; if ($('filtro').value === '') corrente = null; if (!corrente) disegna(); };
+$('succ').onclick = () => { if (!$('succ').dataset.fine) { pagina++; disegna(); } };
+$('prec').onclick = () => { if (pagina > 0) { pagina--; disegna(); } };
+$('corpo').onclick = e => {
+  if (e.target.dataset.cf) {
+    corrente = soggetti.find(s => s.cf === e.target.dataset.cf); pagina = 0; disegna();
+  } else if (e.target.dataset.pos) {
+    const p = corrente.posizioni.find(x => x.pos === e.target.dataset.pos);
+    selezionata = { ...p, cf: corrente.cf, nome: corrente.nome };
+    const campo = (e2, v) => `<div class="campo"><b>${e2}</b><span>${v}</span></div>`;
+    $('applicazione').innerHTML = '';
+    $('dettaglio').innerHTML = `<div>N.<b>${p.pos}</b></div><div>${corrente.nome}</div>`
+      + '<a>Nascondi Dettaglio</a> <a id="desel">Deseleziona Posizione</a><hr>'
+      + campo('Posizione Contributiva', p.pos) + campo('Gestione', p.gestione) + campo('Indirizzo', 'VIA DI PROVA , 8 - 00100 ROMA (RM)')
+      + campo('Sede', '9200 VITERBO') + campo('Stato', p.stato)
+      + `<div class="campo"><b>Soggetto Contribuente</b><b>${corrente.cf}</b><span>${corrente.nome}</span></div>`
+      + campo('Indirizzo', 'VIA DI PROVA , 8 - 00100 ROMA (RM)') + campo('E-mail', 'PROVA@PEC.IT') + campo('Gestione', p.gestione);
+    $('desel').onclick = () => { $('dialogo').style.display = 'block'; };
+    setTimeout(() => mostra('scheda'), 200);
+  }
+};
+$('annulla').onclick = () => { $('dialogo').style.display = 'none'; };
+$('conferma').onclick = () => {
+  $('dialogo').style.display = 'none'; selezionata = null; corrente = null; $('filtro').value = ''; pagina = 0; mostra('home');
+};
+$('voce').onclick = () => {
+  if (!selezionata) return;
+  const s = selezionata;
+  aperture[s.pos] = (aperture[s.pos] || 0) + 1;
+  $('applicazione').innerHTML = '';
+  setTimeout(() => {
+    if (conErrore.includes(s.pos) && aperture[s.pos] === 1) {
+      $('applicazione').innerHTML = '<h3>Messaggio di Avviso</h3><h1>500</h1><p>Ticket non valido</p>';
+      return;
+    }
+    const campo = (e, v) => `<div class="campo"><b>${e}</b><span>${v}</span></div>`;
+    $('applicazione').innerHTML = '<h2>Inquadramento</h2>'
+      + campo('Attivitá Dichiarata', 'COMPAGNIA DI DANZA') + campo('Accentramento', 'A1')
+      + campo('Codice Statistico Contributivo', '11808') + campo('Codice ISTAT attivitá economica', '932999')
+      + campo('Codice ateco 2007', '9001' + s.pos.slice(-2)) + campo('Descrizione Inquadramento', '')
+      + '<h2>Storico Inquadramento</h2>';
+  }, 300);
+};
+</script>
+</body>
+</html>
