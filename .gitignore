@@ -1,0 +1,15 @@
+# Build
+target/
+
+# Profilo del browser: contiene la sessione di accesso ai portali
+profilo-browser/
+
+# Dati dei clienti: non devono mai finire nel repository
+inps-*.csv
+inps-*.txt
+inps.xlsx
+clienti.xlsx
+confronto.xlsx
+diagnostica/
+
+*.zip

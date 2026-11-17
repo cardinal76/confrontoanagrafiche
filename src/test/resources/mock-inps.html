@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cassetto finto per le prove</title>
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  #menu { position: fixed; left: 0; top: 0; width: 220px; bottom: 0; background: #223; color: #fff; padding: 8px; }
+  #menu div { padding: 6px; cursor: pointer; }
+  .modal { display: none; position: fixed; left: 240px; top: 20px; width: 900px; background: #fff; border: 1px solid #888; padding: 10px; max-height: 90vh; overflow: auto; }
+  .disabled { opacity: .4; }
+  td a { color: #06c; cursor: pointer; font-weight: bold; }
+  #finestra { display: none; position: fixed; left: 300px; top: 60px; width: 800px; background: #fff; border: 2px solid #039; }
+  #finestra .titolo { background: #039; color: #fff; padding: 4px; }
+  #finestra .titolo i { float: right; cursor: pointer; margin-left: 8px; font-style: normal; }
+  .griglia { display: flex; flex-wrap: wrap; }
+  .griglia > div { width: 33%; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="menu">
+  <div>CERCA POSIZIONE</div>
+  <input placeholder="Posizione contributiva"><button id="lente"><i class="fa fa-search">L</i></button>
+  <div id="gruppo">Dati sintetici</div>
+  <div id="voce" style="display:none"> Dati Sintetici</div>
+  <div>Dati di dettaglio</div>
+</div>
+
+<div class="modal" id="modale">
+  <h3>Ricerca avanzata</h3>
+  <p id="suggerimento"></p>
+  <label>Visualizza <select name="tab_length"><option value="10">10</option><option value="25">25</option><option value="100">100</option></select> elementi</label>
+  <label style="float:right">Cerca:<input type="search" id="cerca"></label>
+  <table><thead id="testa"></thead><tbody id="corpo"></tbody></table>
+  <div id="info"></div>
+  <ul><li class="paginate_button" id="prec"><a>Precedente</a></li><li class="paginate_button" id="succ"><a>Successivo</a></li></ul>
+  <button id="indietro">Torna indietro</button> <button id="chiudi">× Chiudi</button>
+</div>
+
+<div id="finestra">
+  <div class="titolo"><span id="titolo"></span><i class="fa fa-times" id="x">X</i><i>_</i></div>
+  <div id="contenuto"></div>
+</div>
+
+<script>
+const soggetti = [];
+for (let i = 1; i <= 23; i++) {
+  const cf = String(1000000000 + i * 7919).padStart(11, '0');
+  const posizioni = [{ pos: String(9200000000 + i), gestione: 'Aziende DM', stato: i % 5 === 0 ? 'Cessata' : 'Attiva' }];
+  if (i % 4 === 0) posizioni.push({ pos: String(9300000000 + i), gestione: 'Aziende DM', stato: 'Riattivata' });
+  if (i % 6 === 0) posizioni.push({ pos: String(1100000000 + i), gestione: 'Artigiani', stato: 'Attiva' });
+  soggetti.push({ cf, nome: 'AZIENDA DI PROVA ' + i + (i % 2 ? ' S.R.L.' : ''), posizioni });
+}
+const lente = [9200000003, 9300000008].map(String);   // posizioni che al primo tentativo restano vuote
+const aperture = {};
+let vista = 'soggetti', pagina = 0, corrente = null, selezionata = null;
+const $ = id => document.getElementById(id);
+
+function disegna() {
+  const perPagina = Number(document.querySelector('select').value);
+  const filtro = $('cerca').value.toLowerCase();
+  let righe, testa;
+  if (vista === 'soggetti') {
+    $('suggerimento').innerHTML = 'Cliccare sul <b>codice fiscale del soggetto</b> per visualizzare le relative <b>posizioni contributive</b> associate';
+    testa = ['Cod.Fiscale Soggetto', 'Denominazione soggetto'];
+    righe = soggetti.filter(s => (s.cf + s.nome).toLowerCase().includes(filtro))
+      .map(s => `<tr><td><a data-cf="${s.cf}">${s.cf}</a></td><td>${s.nome}</td></tr>`);
+  } else {
+    $('suggerimento').innerHTML = 'Cliccare sulla <b>posizione contributiva</b> per selezionarla oppure, in alternativa, cliccare sul <b>codice fiscale del soggetto</b> per selezionarlo.';
+    testa = ['Cod.Fiscale Soggetto', 'Gestione', 'Posizione contributiva', 'Descrizione azienda', 'Sede', 'Stato'];
+    righe = corrente.posizioni.map(p => `<tr><td><a>${corrente.cf}</a></td><td>${p.gestione}</td><td><a data-pos="${p.pos}">${p.pos}</a></td><td>${corrente.nome}</td><td>9200 VITERBO</td><td>${p.stato}</td></tr>`);
+  }
+  const da = pagina * perPagina, a = Math.min(da + perPagina, righe.length);
+  $('testa').innerHTML = '<tr>' + testa.map(t => `<th>${t}</th>`).join('') + '</tr>';
+  $('corpo').innerHTML = righe.slice(da, a).join('');
+  $('info').textContent = `Vista da ${da + 1} a ${a} di ${righe.length} elementi`;
+  $('succ').className = 'paginate_button' + (a >= righe.length ? ' disabled' : '');
+  $('indietro').style.display = vista === 'soggetti' ? 'none' : '';
+}
+
+$('lente').onclick = () => { $('modale').style.display = 'block'; disegna(); };
+$('chiudi').onclick = () => { $('modale').style.display = 'none'; };
+$('indietro').onclick = () => { vista = 'soggetti'; pagina = 0; $('cerca').value = ''; disegna(); };
+$('cerca').oninput = () => { pagina = 0; disegna(); };
+document.querySelector('select').onchange = () => { pagina = 0; disegna(); };
+$('succ').onclick = () => { if (!$('succ').className.includes('disabled')) { pagina++; disegna(); } };
+$('corpo').onclick = e => {
+  if (e.target.dataset.cf) {
+    corrente = soggetti.find(s => s.cf === e.target.dataset.cf); vista = 'posizioni'; pagina = 0; $('cerca').value = ''; disegna();
+  } else if (e.target.dataset.pos) {
+    selezionata = { ...corrente.posizioni.find(p => p.pos === e.target.dataset.pos), cf: corrente.cf, nome: corrente.nome };
+    $('modale').style.display = 'none';
+  }
+};
+$('gruppo').onclick = () => { $('voce').style.display = $('voce').style.display === 'none' ? '' : 'none'; };
+$('x').onclick = () => { $('finestra').style.display = 'none'; $('contenuto').innerHTML = ''; };
+$('voce').onclick = () => {
+  const s = selezionata;
+  aperture[s.pos] = (aperture[s.pos] || 0) + 1;
+  const vuota = lente.includes(s.pos) && aperture[s.pos] === 1;
+  $('titolo').textContent = `Dati Sintetici (${s.pos} - ${s.nome.slice(0, 15)} ...)`;
+  $('contenuto').innerHTML = '';
+  $('finestra').style.display = 'block';
+  const campo = (e, v) => `<div><b>${e}</b><br><span>${vuota ? '' : v}</span></div>`;
+  setTimeout(() => {
+    $('contenuto').innerHTML = '<h2>Dati Generali</h2><div class="griglia">'
+      + campo('Codice Fiscale', s.cf) + campo('Posizione Contributiva', s.pos) + campo('Gestione', s.gestione)
+      + campo('Denominazione', s.nome) + campo('Tipologia Posizione', 'Datore Lavoro') + campo('Indirizzo PEC', 'PROVA@PEC.IT')
+      + campo('Inizio attività con dipendenti', '07/06/2003') + campo('Stato Azienda', s.stato) + campo('Data Variazione Stato', '08/02/2017')
+      + campo('Sede Competenza', '9200 - VITERBO') + campo('Indirizzo', 'VIA DI PROVA 8, 00100 ROMA') + '</div>'
+      + '<h2>Inquadramento</h2><div class="griglia">'
+      + campo('Attivitá Dichiarata', 'COMPAGNIA DI DANZA') + campo('Accentramento', 'A1') + campo('Descrizione Accentramento', 'POSIZIONE SINGOLA')
+      + '</div>';
+    // l'inquadramento arriva dopo i dati generali
+    setTimeout(() => {
+      $('contenuto').innerHTML += '<div class="griglia">'
+        + campo('Codice Statistico Contributivo', '11808') + campo('Codice ISTAT attivitá economica', '932999')
+        + campo('Codice ateco 2007', '9001' + s.pos.slice(-2)) + campo('Descrizione Inquadramento', '') + '</div>'
+        + '<h2>Storico Inquadramento</h2><button>Excel</button>';
+    }, 300);
+  }, 200);
+};
+</script>
+</body>
+</html>
