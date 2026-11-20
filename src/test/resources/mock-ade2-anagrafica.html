@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Cassetto fiscale - Informazioni (finto)</title></head>
+<body>
+<h1>Cassetto fiscale - Consultazioni</h1>
+<p id="delegato"></p>
+<ul><li><a href="#" id="mAnag">Dati anagrafici</a></li><li><a href="#" id="mAltre">Altre attività</a></li>
+  <li><a href="#">Altri luoghi di esercizio</a></li><li><a href="#">Rappresentanti</a></li></ul>
+<div id="contenuto"></div>
+<script>
+  const cf = sessionStorage.getItem('cliente') || '';
+  const nome = "AZIENDA " + cf.slice(-3) + " SOCIETA' A RESPONSABILITA' LIMITATA";
+  document.getElementById('delegato').textContent = 'sei nel cassetto delegato di ' + cf + ' - ' + nome;
+  const anagrafica = () => {
+    document.getElementById('contenuto').innerHTML = `
+      <h2>Dati anagrafici</h2><h3>Dati principali</h3>
+      <p><b>${nome}</b> Codice fiscale <b>${cf}</b></p>
+      <p>Natura giuridica <b>SOCIETA' A RESPONSABILITA' LIMITATA (02)</b></p>
+      <p>Sede legale in <b>VIA DI PROVA 12 00186 ROMA (RM)</b><br>a decorrere dal <b>16/4/2018</b> (fonte del dato <b>C.C.I.A.A.</b>)</p>
+      <p>Domicilio fiscale in <b>VIA DI PROVA 12 00186 ROMA (RM)</b><br>a decorrere dal <b>16/4/2018</b> (fonte del dato <b>C.C.I.A.A.</b>)</p>
+      <p>Luogo di esercizio in <b>VIA DI PROVA 14 00186 ROMA (RM)</b><br>a decorrere dal <b>16/4/2018</b> (fonte del dato <b>C.C.I.A.A.</b>)</p>
+      <div>precedenti denominazioni / nature giuridiche</div><div>precedenti sedi legali</div><div>dati del rappresentante</div>
+      <h3>Dati relativi alla partita IVA e attività</h3>
+      <p>Partita IVA <b>${cf}</b> attribuita il <b>22/1/2018</b> - <i>autorizzata</i> ad effettuare operazioni intracomunitarie<br>Stato <b>ATTIVA</b></p>
+      <p>Attività esercitata <b>PRODUZIONE CINEMATOGRAFICA, VIDEO E PROGRAMMI TV (5911${cf.slice(-2)})</b><br>a decorrere dal <b>1/11/2020</b> (fonte del dato <b>C.C.I.A.A.</b>)</p>
+      <p>E' possibile generare il QR code contenente i dati relativi alla Partita IVA <b>${cf}</b></p>
+      <div>precedenti attività esercitate</div>
+      <h3>Uffici associati al domicilio fiscale</h3><p>UFF. TERR. DI ROMA 1 - TRASTEVERE (TJN)</p>`;
+  };
+  document.getElementById('mAnag').onclick = e => { e.preventDefault(); anagrafica(); };
+  document.getElementById('mAltre').onclick = e => {
+    e.preventDefault();
+    document.getElementById('contenuto').innerHTML = `<h2>Altre attività</h2>
+      <p>Attività <b>COMMERCIO AL DETTAGLIO (471110)</b> a decorrere dal <b>1/1/2021</b></p>`;
+  };
+  anagrafica();
+</script>
+</body></html>

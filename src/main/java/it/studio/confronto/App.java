@@ -14,7 +14,8 @@ import java.util.Scanner;
 /**
  * Uso: App [comando] [cartella di lavoro]
  * Comandi: inps = scarica i dati dal Cassetto Previdenziale Contribuente;
- *          ade  = scarica l'anagrafica dal cassetto fiscale dell'Agenzia delle Entrate.
+ *          ade  = scarica l'anagrafica dal cassetto fiscale dell'Agenzia delle Entrate;
+ *          ade-excel = ricostruisce ade.xlsx dai testi gia' scaricati.
  */
 public class App {
 
@@ -23,8 +24,13 @@ public class App {
         Path base = Path.of(args.length > 1 ? args[1] : ".").toAbsolutePath().normalize();
         Config cfg = new Config(base.resolve("config.properties"));
 
+        if (comando.equals("ade-excel")) {
+            // ricostruisce ade.xlsx dai testi gia' scaricati, senza aprire il browser
+            AdeDownloader.scriviXlsx(base);
+            return;
+        }
         if (!comando.equals("inps") && !comando.equals("ade")) {
-            System.out.println("Comando '" + comando + "' sconosciuto: usa 'inps' oppure 'ade'.");
+            System.out.println("Comando '" + comando + "' sconosciuto: usa 'inps', 'ade' oppure 'ade-excel'.");
             return;
         }
 
@@ -46,8 +52,7 @@ public class App {
                 if (comando.equals("ade")) {
                     page.navigate(cfg.opt("ade.url.login", "https://www.agenziaentrate.gov.it/"));
                     System.out.println();
-                    System.out.println("Accedi all'Agenzia delle Entrate con SPID e scegli l'utenza di lavoro.");
-                    System.out.println("Se il cassetto fiscale si apre in un'altra scheda, chiudi le altre.");
+                    System.out.println("Accedi all'Agenzia delle Entrate e scegli l'utenza di lavoro.");
                     new AdeDownloader(page, cfg, base).esegui(codici);
                     return;
                 }

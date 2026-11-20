@@ -106,6 +106,29 @@ public class AdeDownloader {
             })()
             """;
 
+    static final String FILE_APRI_CLIENTE = "ade-apri-cliente.txt";
+
+    /** Registra nella pagina il percorso CSS dell'ultimo elemento cliccato dall'utente. */
+    private static final String REGISTRA_CLIC = """
+            () => {
+              window.__clicAppreso = null;
+              document.addEventListener('click', e => {
+                let el = e.target;
+                const parti = [];
+                while (el && el.nodeType === 1 && el !== document.body) {
+                  if (el.id) { parti.unshift('#' + CSS.escape(el.id)); break; }
+                  let n = 1, s = el;
+                  while ((s = s.previousElementSibling)) { if (s.tagName === el.tagName) n++; }
+                  parti.unshift(el.tagName.toLowerCase() + ':nth-of-type(' + n + ')');
+                  el = el.parentElement;
+                }
+                if (!parti.length || !parti[0].startsWith('#')) { parti.unshift('body'); }
+                window.__clicAppreso = parti.join(' > ');
+              }, true);
+            }
+            """;
+
+    private boolean altreAttivitaSegnalato;
     private final Page page;
     private final Config cfg;
     private final Path dir;
@@ -139,11 +162,18 @@ public class AdeDownloader {
             log("Nessun codice fiscale da elaborare");
             return;
         }
-        List<List<String>> percorso = Csv.leggi(dir.resolve(FILE_PERCORSO));
-        if (percorso.isEmpty()) {
-            percorso = registra(codici.get(0));
+        boolean registrato = cfg.opt("ade.percorso", "automatico").equalsIgnoreCase("registrato");
+        List<List<String>> percorso = List.of();
+        if (registrato) {
+            percorso = Csv.leggi(dir.resolve(FILE_PERCORSO));
+            if (percorso.isEmpty()) {
+                percorso = registra(codici.get(0));
+            } else {
+                log("Uso il percorso gia' registrato in " + FILE_PERCORSO + " (" + (percorso.size() - 1) + " passi)");
+            }
         } else {
-            log("Uso il percorso gia' registrato in " + FILE_PERCORSO + " (" + (percorso.size() - 1) + " passi)");
+            attendiUtente("Entra nel Cassetto fiscale (Servizi > Cassetto fiscale), fino alla pagina con la finestra\n"
+                    + "\"Codice fiscale del cliente\" o con le \"Sezioni disponibili\". Poi premi INVIO.");
         }
 
         Set<String> fatti = new HashSet<>();
@@ -166,21 +196,18 @@ public class AdeDownloader {
                 }
                 elaborati++;
                 try {
-                    String testo = riproduci(percorso, cf);
+                    String testo = registrato ? riproduci(percorso, cf) : percorsoAutomatico(cf);
                     Files.writeString(dir.resolve(CARTELLA_TESTI).resolve(cf + ".txt"), testo, StandardCharsets.UTF_8);
                     if (!testo.toUpperCase().contains(cf.toUpperCase())) {
                         throw new IllegalArgumentException("le pagine raggiunte non riportano il codice fiscale");
                     }
-                    AdeParser.Anagrafica a = AdeParser.analizza(testo);
-                    Csv.accoda(dir.resolve(FILE_DATI), List.of(cf, a.denominazione(),
-                            a.ateco().isEmpty() ? "" : a.ateco().get(0),
-                            a.ateco().size() > 1 ? String.join(", ", a.ateco().subList(1, a.ateco().size())) : "",
-                            a.denominazione().isEmpty() || a.ateco().isEmpty() ? "Dati non riconosciuti: vedi il testo salvato" : ""));
+                    Map<String, String> a = AdeParser.analizza(testo);
+                    Csv.accoda(dir.resolve(FILE_DATI), List.of(cf));
                     fatti.add(cf);
                     erroriDiFila = 0;
                     log(String.format("[%d/%d] %s: %s | ATECO %s", i + 1, codici.size(), cf,
-                            a.denominazione().isEmpty() ? "(denominazione non trovata)" : a.denominazione(),
-                            a.ateco().isEmpty() ? "(non trovato)" : String.join(", ", a.ateco())));
+                            a.get(AdeParser.DENOMINAZIONE).isEmpty() ? "(denominazione non trovata)" : a.get(AdeParser.DENOMINAZIONE),
+                            a.get(AdeParser.ATECO).isEmpty() ? "(non trovato)" : a.get(AdeParser.ATECO)));
                 } catch (RuntimeException e) {
                     erroriDiFila++;
                     String msg = String.valueOf(e.getMessage()).lines().findFirst().orElse("");
@@ -194,16 +221,219 @@ public class AdeDownloader {
                 page.waitForTimeout(pausaMs);
             }
         } finally {
-            if (Files.exists(dir.resolve(FILE_DATI))) {
-                Map<String, List<String>> ultime = new LinkedHashMap<>();
-                for (List<String> r : Csv.leggi(dir.resolve(FILE_DATI))) {
-                    ultime.put(r.get(0), r);
+            scriviXlsx(dir);
+        }
+    }
+
+    /**
+     * Ricostruisce ade.xlsx rileggendo i testi salvati: se le regole di lettura cambiano,
+     * non serve riscaricare nulla.
+     */
+    public static void scriviXlsx(Path dir) throws IOException {
+        Set<String> fatti = new java.util.LinkedHashSet<>();
+        for (List<String> r : Csv.leggi(dir.resolve(FILE_DATI))) {
+            fatti.add(r.get(0));
+        }
+        if (fatti.isEmpty()) {
+            return;
+        }
+        List<String> testata = new ArrayList<>(List.of("Codice fiscale"));
+        testata.addAll(AdeParser.CAMPI);
+        testata.add("Note");
+        List<List<String>> righe = new ArrayList<>();
+        for (String cf : fatti) {
+            Path file = dir.resolve(CARTELLA_TESTI).resolve(cf + ".txt");
+            Map<String, String> a = AdeParser.analizza(Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : "");
+            List<String> riga = new ArrayList<>(List.of(cf));
+            riga.addAll(a.values());
+            riga.add(a.get(AdeParser.DENOMINAZIONE).isEmpty() || a.get(AdeParser.ATECO).isEmpty()
+                    ? "Dati non riconosciuti: vedi " + CARTELLA_TESTI + "/" + cf + ".txt" : "");
+            righe.add(riga);
+        }
+        ExcelIO.scriviTabella(dir.resolve(FILE_XLSX), testata, righe);
+        log("Dati salvati in " + dir.resolve(FILE_XLSX) + " (" + righe.size() + " codici fiscali)");
+    }
+
+    // ------------------------------------------------------------------ percorso automatico
+
+    /**
+     * Percorso del cassetto fiscale delegato:
+     * home del cassetto -> finestra "Codice fiscale del cliente" -> Vai -> Vai a Consultazioni
+     * -> Dati anagrafici (+ pagina "Altre attività").
+     */
+    private String percorsoAutomatico(String cf) {
+        String home = cfg.opt("ade.url.cassetto", "https://cassetto.agenziaentrate.gov.it/CassHomeWeb/home");
+        String anagrafica = cfg.opt("ade.url.anagrafica",
+                "https://cassetto.agenziaentrate.gov.it/cassfisc-web/CassettoFiscaleServlet?Ric=CONTR");
+        page.navigate(home);
+        caricamento();
+
+        Locator campo = campoCliente(4000);
+        if (campo == null) {
+            apriSceltaCliente(home);
+            campo = campoCliente(15000);
+        }
+        if (campo == null) {
+            throw new IllegalArgumentException("campo \"Codice fiscale del cliente\" non trovato");
+        }
+        campo.fill(cf);
+        elemento(":is(button, a):text-is('Vai'), input[value='Vai' i]").click();
+
+        java.util.regex.Pattern scelto = java.util.regex.Pattern.compile(
+                "(CLIENTE:?|DELEGATO DI)\\s*" + java.util.regex.Pattern.quote(cf.toUpperCase()));
+        if (!attendi(() -> scelto.matcher(testoPagina().toUpperCase()).find(), 20000)) {
+            String avviso = "";
+            // prima il messaggio della finestra di scelta del cliente, poi gli altri avvisi della pagina
+            for (String sel : List.of(".modal, [role='dialog']", "[role='alert'], .alert")) {
+                for (Frame f : page.frames()) {
+                    Locator a = f.locator(sel).locator("visible=true");
+                    if (avviso.isEmpty() && a.count() > 0) {
+                        avviso = a.first().innerText().replaceAll("\\s+", " ").trim();
+                    }
                 }
-                ExcelIO.scriviTabella(dir.resolve(FILE_XLSX), List.of("Codice fiscale", "Denominazione AdE",
-                        "ATECO AdE (primo trovato)", "Altri ATECO AdE", "Note"), new ArrayList<>(ultime.values()));
-                log("Dati salvati in " + dir.resolve(FILE_XLSX) + " (" + ultime.size() + " codici fiscali)");
+            }
+            throw new IllegalArgumentException("cliente non selezionato"
+                    + (avviso.isEmpty() ? "" : ": " + avviso.substring(0, Math.min(200, avviso.length()))));
+        }
+
+        // dati anagrafici: dal collegamento "Vai a Consultazioni", altrimenti direttamente dall'indirizzo
+        try {
+            elemento("a:has-text('Vai a Consultazioni'), button:has-text('Vai a Consultazioni')", 5000).click();
+            caricamento();
+        } catch (RuntimeException e) {
+            page.navigate(anagrafica);
+        }
+        if (!attendi(() -> testoPagina().contains("Dati principali"), 15000)) {
+            page.navigate(anagrafica);
+            if (!attendi(() -> testoPagina().contains("Dati principali"), 15000)) {
+                throw new IllegalArgumentException("pagina \"Dati anagrafici\" non raggiunta");
             }
         }
+        page.waitForTimeout(pausaPassoMs);
+        StringBuilder testo = new StringBuilder(testoPagina());
+
+        // codici attivita' secondari: stanno nella pagina "Altre attività" del menu a sinistra
+        if (!cfg.opt("ade.altre.attivita", "true").equalsIgnoreCase("false")) {
+            try {
+                elemento("a:text-matches('^\\\\s*Altre attivit\\\\S+\\\\s*$', 'i')", 4000).click();
+                caricamento();
+                page.waitForTimeout(pausaPassoMs);
+                testo.append("\n").append(AdeParser.PAGINA_ALTRE_ATTIVITA).append("\n").append(testoPagina());
+            } catch (RuntimeException e) {
+                if (!altreAttivitaSegnalato) {
+                    altreAttivitaSegnalato = true;
+                    log("  Non riesco ad aprire la pagina \"Altre attività\": proseguo con i soli dati anagrafici");
+                }
+            }
+        }
+        return testo.toString();
+    }
+
+    /** Il campo in cui scrivere il codice fiscale del cliente, se visibile entro il tempo dato. */
+    private Locator campoCliente(long ms) {
+        long scadenza = System.currentTimeMillis() + ms;
+        do {
+            for (Frame f : page.frames()) {
+                try {
+                    Locator perEtichetta = f.getByLabel("Codice fiscale del cliente").locator("visible=true");
+                    if (perEtichetta.count() > 0) {
+                        return perEtichetta.first();
+                    }
+                    Locator dopoIlTesto = f.locator("xpath=(//*[contains(text(),'Codice fiscale del cliente')])[last()]"
+                            + "/following::input[not(@type='hidden') and not(@type='button') and not(@type='submit')][1]")
+                            .locator("visible=true");
+                    if (dopoIlTesto.count() > 0) {
+                        return dopoIlTesto.first();
+                    }
+                } catch (RuntimeException ignorata) {
+                    // frame sparito nel frattempo
+                }
+            }
+            page.waitForTimeout(300);
+        } while (System.currentTimeMillis() < scadenza);
+        return null;
+    }
+
+    /** Riapre la finestra di scelta del cliente quando non compare da sola (un cliente e' gia' selezionato). */
+    private void apriSceltaCliente(String home) throws RuntimeException {
+        Path appreso = dir.resolve(FILE_APRI_CLIENTE);
+        List<String> selettori = new ArrayList<>();
+        try {
+            if (Files.exists(appreso)) {
+                selettori.add(Files.readString(appreso, StandardCharsets.UTF_8).trim());
+            }
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        if (!cfg.opt("ade.sel.apriCliente").isEmpty()) {
+            selettori.add(cfg.opt("ade.sel.apriCliente"));
+        }
+        selettori.add(":is(a, button):text-matches('cambia cliente|altro cliente|cassetto del cliente|cassetto del contribuente', 'i')");
+        selettori.add(":is(a, button):text-matches('^\\\\s*cambia utenza\\\\s*$', 'i')");
+        String sito = java.net.URI.create(home).getHost();
+        for (String sel : selettori) {
+            try {
+                for (Frame f : page.frames()) {
+                    Locator l = f.locator(sel).locator("visible=true");
+                    if (l.count() == 0) {
+                        continue;
+                    }
+                    l.first().click(new Locator.ClickOptions().setTimeout(3000));
+                    if (campoCliente(4000) != null) {
+                        return;
+                    }
+                    // il clic ha portato fuori dal cassetto (es. cambio utenza del portale): si torna indietro
+                    if (!sito.equals(java.net.URI.create(page.url()).getHost())) {
+                        page.navigate(home);
+                        caricamento();
+                    }
+                }
+            } catch (RuntimeException ignorata) {
+                // candidato non adatto: si prova il successivo
+            }
+        }
+        for (Frame f : page.frames()) {
+            try {
+                f.evaluate(REGISTRA_CLIC);
+            } catch (RuntimeException ignorata) {
+                // frame non accessibile
+            }
+        }
+        attendiUtente("Non trovo come riaprire la finestra \"Codice fiscale del cliente\": aprila tu con un clic, senza\n"
+                + "scrivere nulla, poi premi INVIO. Memorizzo dove clicchi, cosi' dalla prossima volta lo faccio da solo.");
+        for (Frame f : page.frames()) {
+            try {
+                Object percorso = f.evaluate("() => window.__clicAppreso || null");
+                if (percorso != null && !percorso.toString().isBlank()) {
+                    Files.writeString(appreso, percorso.toString(), StandardCharsets.UTF_8);
+                    log("Ho memorizzato come aprire la scelta del cliente (" + FILE_APRI_CLIENTE + ")");
+                    break;
+                }
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            } catch (RuntimeException ignorata) {
+                // frame non accessibile
+            }
+        }
+    }
+
+    private void caricamento() {
+        try {
+            page.waitForLoadState();
+        } catch (RuntimeException ignorata) {
+            // la pagina sta ancora caricando: le attese successive coprono il ritardo
+        }
+    }
+
+    private boolean attendi(java.util.function.BooleanSupplier condizione, long ms) {
+        long scadenza = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < scadenza) {
+            if (condizione.getAsBoolean()) {
+                return true;
+            }
+            page.waitForTimeout(300);
+        }
+        return condizione.getAsBoolean();
     }
 
     // ------------------------------------------------------------------ registrazione
@@ -319,7 +549,11 @@ public class AdeDownloader {
 
     /** Primo elemento visibile che corrisponde al selettore, cercato in tutti i frame; attende fino a 15 secondi. */
     private Locator elemento(String selettore) {
-        long scadenza = System.currentTimeMillis() + 15000;
+        return elemento(selettore, 15000);
+    }
+
+    private Locator elemento(String selettore, long ms) {
+        long scadenza = System.currentTimeMillis() + ms;
         while (true) {
             for (Frame f : page.frames()) {
                 try {

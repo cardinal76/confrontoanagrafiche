@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Agenzia delle Entrate - Cassetto (finto)</title>
+<style>#finestra { display:none; position:fixed; left:300px; top:60px; background:#fff; border:2px solid #036; padding:16px }</style></head>
+<body>
+<h1>Area riservata</h1><h2>Cassetto fiscale</h2>
+<p>Utente connesso: UTENTE DI PROVA</p>
+<p>Utenza di lavoro: STUDIO DI PROVA</p>
+<a href="#" id="cambia">Cambia Utenza</a>
+<div class="alert"><h3>Cambio utenza del cassetto fiscale</h3>
+  <p>Puoi scegliere se accedere al tuo cassetto o al cassetto del cliente che ti ha delegato indicando il codice fiscale.</p>
+  <p id="scelto"></p></div>
+<p id="delegato"></p>
+<h3>Sezioni disponibili</h3>
+<div><h4>Consultazioni</h4><a href="mock-ade2-anagrafica.html">Vai a Consultazioni</a></div>
+<div><h4>L'Agenzia scrive</h4><a href="#">Vai a L'Agenzia scrive</a></div>
+
+<div id="finestra" class="modal">
+  <h3>Cassetto del contribuente</h3>
+  <p>Per accedere al cassetto fiscale del cliente inserisci il codice fiscale.</p>
+  <div>Codice fiscale del cliente:</div>
+  <input type="text" id="cfc">
+  <p id="errore" style="color:red"></p>
+  <button id="vai">Vai</button> <button id="chiudi">Chiudi</button>
+</div>
+<script>
+  const $ = id => document.getElementById(id);
+  const SENZA_DELEGA = 'RSSMRA80A01H501U';
+  const mostra = () => {
+    const cf = sessionStorage.getItem('cliente');
+    $('scelto').textContent = cf ? 'Hai selezionato il cassetto fiscale del cliente: ' + cf : '';
+    $('delegato').textContent = cf ? 'sei nel cassetto delegato di ' + cf + " - AZIENDA " + cf.slice(-3) + " SOCIETA' A RESPONSABILITA' LIMITATA" : '';
+    // la finestra compare da sola solo se non c'e' ancora un cliente selezionato
+    $('finestra').style.display = cf ? 'none' : 'block';
+  };
+  $('cambia').onclick = e => { e.preventDefault(); $('errore').textContent = ''; $('cfc').value = ''; $('finestra').style.display = 'block'; };
+  $('chiudi').onclick = () => { $('finestra').style.display = 'none'; };
+  $('vai').onclick = () => {
+    const cf = $('cfc').value.trim().toUpperCase();
+    if (cf === SENZA_DELEGA) { $('errore').textContent = 'Non risulta una delega attiva per il codice fiscale indicato'; return; }
+    setTimeout(() => { sessionStorage.setItem('cliente', cf); mostra(); }, 300);
+  };
+  mostra();
+</script>
+</body></html>

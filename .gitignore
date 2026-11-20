@@ -9,6 +9,7 @@ inps-*.csv
 inps-*.txt
 inps.xlsx
 ade-*.csv
+ade-*.txt
 ade-testi/
 ade.xlsx
 clienti.xlsx
