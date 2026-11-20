@@ -180,6 +180,16 @@ public class AdeDownloader {
         for (List<String> r : Csv.leggi(dir.resolve(FILE_DATI))) {
             fatti.add(r.get(0));
         }
+        // i codici gia' andati in errore non si ritentano, a meno che non sia chiesto in configurazione
+        if (!cfg.opt("ade.ritenta.errori", "false").equalsIgnoreCase("true")) {
+            int prima = fatti.size();
+            for (List<String> r : Csv.leggi(dir.resolve(FILE_ERRORI))) {
+                fatti.add(r.get(0));
+            }
+            if (fatti.size() > prima) {
+                log("Salto " + (fatti.size() - prima) + " codici fiscali gia' andati in errore (ade.ritenta.errori=false)");
+            }
+        }
         int limite = Integer.parseInt(cfg.opt("ade.limite", "0"));
         int elaborati = 0;
         int erroriDiFila = 0;
@@ -234,7 +244,14 @@ public class AdeDownloader {
         for (List<String> r : Csv.leggi(dir.resolve(FILE_DATI))) {
             fatti.add(r.get(0));
         }
-        if (fatti.isEmpty()) {
+        // ultimo errore di ogni codice fiscale non completato: finisce nell'Excel con il motivo
+        Map<String, String> errori = new LinkedHashMap<>();
+        for (List<String> r : Csv.leggi(dir.resolve(FILE_ERRORI))) {
+            if (!fatti.contains(r.get(0))) {
+                errori.put(r.get(0), r.size() > 1 ? r.get(1) : "");
+            }
+        }
+        if (fatti.isEmpty() && errori.isEmpty()) {
             return;
         }
         List<String> testata = new ArrayList<>(List.of("Codice fiscale"));
@@ -250,8 +267,14 @@ public class AdeDownloader {
                     ? "Dati non riconosciuti: vedi " + CARTELLA_TESTI + "/" + cf + ".txt" : "");
             righe.add(riga);
         }
+        for (Map.Entry<String, String> e : errori.entrySet()) {
+            List<String> riga = new ArrayList<>(List.of(e.getKey()));
+            AdeParser.CAMPI.forEach(campo -> riga.add(""));
+            riga.add("ERRORE: " + e.getValue());
+            righe.add(riga);
+        }
         ExcelIO.scriviTabella(dir.resolve(FILE_XLSX), testata, righe);
-        log("Dati salvati in " + dir.resolve(FILE_XLSX) + " (" + righe.size() + " codici fiscali)");
+        log("Dati salvati in " + dir.resolve(FILE_XLSX) + " (" + fatti.size() + " letti, " + errori.size() + " in errore)");
     }
 
     // ------------------------------------------------------------------ percorso automatico
