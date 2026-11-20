@@ -15,6 +15,13 @@ public class Config {
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             props.load(r);
         }
+        // impostazioni personali: stanno in un file a parte, non tracciato da git, e prevalgono
+        Path locale = file.resolveSibling("config.local.properties");
+        if (Files.exists(locale)) {
+            try (Reader r = Files.newBufferedReader(locale, StandardCharsets.UTF_8)) {
+                props.load(r);
+            }
+        }
     }
 
     /** Valore facoltativo: stringa vuota se assente. */

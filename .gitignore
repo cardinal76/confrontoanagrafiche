@@ -16,3 +16,7 @@ confronto.xlsx
 diagnostica/
 
 *.zip
+
+# Impostazioni personali (prevalgono su config.properties)
+config.local.properties
+config.mio
