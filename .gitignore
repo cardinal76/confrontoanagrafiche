@@ -8,6 +8,9 @@ profilo-browser/
 inps-*.csv
 inps-*.txt
 inps.xlsx
+ade-*.csv
+ade-testi/
+ade.xlsx
 clienti.xlsx
 confronto.xlsx
 diagnostica/

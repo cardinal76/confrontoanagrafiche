@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Cassetto fiscale finto</title></head>
+<body>
+<h1>Cassetto fiscale</h1>
+<p>Stai consultando il cassetto di <b id="chi"></b></p>
+<ul><li><a href="#" id="voceAnagrafica">Anagrafica</a></li><li><a href="#">Dichiarazioni</a></li></ul>
+<div id="dati" style="display:none">
+  <h2>Dati anagrafici</h2>
+  <div><b>Codice fiscale</b><div id="cf"></div></div>
+  <div><b>Denominazione</b><div id="den"></div></div>
+  <div><b>Domicilio fiscale</b><div>VIA DI PROVA 8 00100 ROMA RM</div></div>
+  <h2>Attività</h2>
+  <table><tr><th>Codice attività</th><th>Descrizione</th><th>Tipo</th></tr>
+    <tr><td id="a1"></td><td>PRODUZIONE DI SOFTWARE</td><td>Prevalente</td></tr>
+    <tr><td>47.11.10</td><td>IPERMERCATI</td><td>Secondaria</td></tr></table>
+</div>
+<script>
+  const cf = new URLSearchParams(location.search).get('cf') || '';
+  document.getElementById('chi').textContent = cf;
+  document.getElementById('voceAnagrafica').onclick = e => {
+    e.preventDefault();
+    setTimeout(() => {
+      document.getElementById('cf').textContent = cf;
+      document.getElementById('den').textContent = 'AZIENDA ' + cf.slice(-3) + ' S.R.L.';
+      document.getElementById('a1').textContent = '62.01.' + cf.slice(-2);
+      document.getElementById('dati').style.display = '';
+    }, 300);
+  };
+</script>
+</body></html>

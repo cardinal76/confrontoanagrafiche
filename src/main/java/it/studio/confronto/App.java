@@ -13,7 +13,8 @@ import java.util.Scanner;
 
 /**
  * Uso: App [comando] [cartella di lavoro]
- * Comandi: inps = scarica i dati dal Cassetto Previdenziale Contribuente.
+ * Comandi: inps = scarica i dati dal Cassetto Previdenziale Contribuente;
+ *          ade  = scarica l'anagrafica dal cassetto fiscale dell'Agenzia delle Entrate.
  */
 public class App {
 
@@ -22,9 +23,17 @@ public class App {
         Path base = Path.of(args.length > 1 ? args[1] : ".").toAbsolutePath().normalize();
         Config cfg = new Config(base.resolve("config.properties"));
 
-        if (!comando.equals("inps")) {
-            System.out.println("Comando '" + comando + "' non ancora disponibile: per ora c'e' solo 'inps'.");
+        if (!comando.equals("inps") && !comando.equals("ade")) {
+            System.out.println("Comando '" + comando + "' sconosciuto: usa 'inps' oppure 'ade'.");
             return;
+        }
+
+        // per l'Agenzia delle Entrate l'elenco dei clienti si legge prima di aprire il browser
+        List<String> codici = List.of();
+        if (comando.equals("ade")) {
+            Path elenco = base.resolve(cfg.opt("ade.input.file", "inps.xlsx"));
+            codici = ExcelIO.leggiCodiciFiscali(elenco);
+            System.out.println("Codici fiscali letti da " + elenco + ": " + codici.size());
         }
 
         Scanner tastiera = new Scanner(System.in);
@@ -34,6 +43,14 @@ public class App {
                             .setArgs(List.of("--start-maximized"));
             try (BrowserContext ctx = apriBrowser(pw, base.resolve("profilo-browser"), opzioni, cfg.opt("browser.channel"))) {
                 Page page = ctx.pages().isEmpty() ? ctx.newPage() : ctx.pages().get(0);
+                if (comando.equals("ade")) {
+                    page.navigate(cfg.opt("ade.url.login", "https://www.agenziaentrate.gov.it/"));
+                    System.out.println();
+                    System.out.println("Accedi all'Agenzia delle Entrate con SPID e scegli l'utenza di lavoro.");
+                    System.out.println("Se il cassetto fiscale si apre in un'altra scheda, chiudi le altre.");
+                    new AdeDownloader(page, cfg, base).esegui(codici);
+                    return;
+                }
                 page.navigate(cfg.opt("inps.url.login", "https://www.inps.it/"));
 
                 System.out.println();

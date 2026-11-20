@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Cassetto fiscale finto - scelta delegante</title></head>
+<body>
+<h1>Cassetto fiscale delegato</h1>
+<form onsubmit="location.href = 'mock-ade-cassetto.html?cf=' + encodeURIComponent(document.querySelector('[name=cfDelegante]').value); return false;">
+  <label>Codice fiscale del delegante <input name="cfDelegante"></label>
+  <button type="submit">Conferma</button>
+</form>
+</body></html>

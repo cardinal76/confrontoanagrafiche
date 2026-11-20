@@ -31,17 +31,32 @@ public final class ExcelIO {
     private ExcelIO() {
     }
 
-    /** Legge i codici fiscali dalla colonna A del primo foglio, saltando l'intestazione e i duplicati. */
+    /**
+     * Legge i codici fiscali dal primo foglio, saltando l'intestazione e i duplicati.
+     * La colonna e' quella la cui intestazione parla di codice fiscale ("CF soggetto", "Codice fiscale"...);
+     * se non ce n'e' una, la colonna A.
+     */
     public static List<String> leggiCodiciFiscali(Path file) throws IOException {
         Set<String> codici = new LinkedHashSet<>();
         DataFormatter fmt = new DataFormatter();
         try (InputStream in = Files.newInputStream(file); Workbook wb = WorkbookFactory.create(in)) {
             Sheet foglio = wb.getSheetAt(0);
+            int colonna = 0;
+            Row testata = foglio.getRow(0);
+            if (testata != null) {
+                for (Cell c : testata) {
+                    String t = fmt.formatCellValue(c).trim().toLowerCase();
+                    if (t.matches("cf\\b.*|.*cod.*fisc.*")) {
+                        colonna = c.getColumnIndex();
+                        break;
+                    }
+                }
+            }
             for (Row riga : foglio) {
                 if (riga.getRowNum() == 0) {
                     continue;
                 }
-                String cf = fmt.formatCellValue(riga.getCell(0)).trim().toUpperCase();
+                String cf = fmt.formatCellValue(riga.getCell(colonna)).trim().toUpperCase();
                 if (!cf.isEmpty()) {
                     // Excel toglie gli zeri iniziali alle partite IVA salvate come numero
                     codici.add(cf.matches("\\d{1,10}") ? "0".repeat(11 - cf.length()) + cf : cf);
