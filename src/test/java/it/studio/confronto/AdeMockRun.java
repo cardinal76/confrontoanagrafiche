@@ -11,11 +11,12 @@ import java.util.List;
 
 /**
  * Prova registrazione e riproduzione del percorso AdE su pagine finte (src/test/resources/mock-ade*.html).
- * Argomenti: cartella di lavoro, percorso dell'eseguibile di Chromium.
+ * Argomenti: cartella di lavoro, percorso dell'eseguibile di Chromium, "elenco" per scegliere il cliente da una lista.
  */
 public class AdeMockRun {
 
     public static void main(String[] args) throws Exception {
+        boolean daElenco = args.length > 2 && args[2].equals("elenco");
         Path lavoro = Path.of(args[0]).toAbsolutePath();
         Files.createDirectories(lavoro);
         Path config = lavoro.resolve("config.properties");
@@ -44,8 +45,13 @@ public class AdeMockRun {
                     protected void attendiUtente(String messaggio) {
                         System.out.println("[utente finto] " + messaggio.lines().findFirst().orElse(""));
                         if (++richieste == 2) {
-                            page().locator("[name=cfDelegante]").pressSequentially(codici.get(0));
-                            page().locator("button").click();
+                            if (daElenco) {
+                                page().locator("tr", new Page.LocatorOptions().setHasText(codici.get(0)))
+                                        .getByText("Seleziona").click();
+                            } else {
+                                page().locator("[name=cfDelegante]").pressSequentially(codici.get(0));
+                                page().locator("button").click();
+                            }
                             page().locator("#voceAnagrafica").click();
                             page().waitForTimeout(600);
                         }

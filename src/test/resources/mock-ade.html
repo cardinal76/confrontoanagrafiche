@@ -6,4 +6,12 @@
   <label>Codice fiscale del delegante <input name="cfDelegante"></label>
   <button type="submit">Conferma</button>
 </form>
+<h2>Elenco deleghe</h2>
+<table id="deleghe"></table>
+<script>
+  ['01000007919', '01000015838', 'RSSMRA80A01H501U', '01000031676'].forEach(cf => {
+    document.getElementById('deleghe').insertAdjacentHTML('beforeend',
+      `<tr><td>${cf}</td><td>CLIENTE ${cf.slice(-3)}</td><td><a href="#">Dettagli</a> <a href="mock-ade-cassetto.html?cf=${cf}">Seleziona</a></td></tr>`);
+  });
+</script>
 </body></html>

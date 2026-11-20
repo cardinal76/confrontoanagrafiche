@@ -27,6 +27,7 @@ import java.util.Set;
 public class AdeDownloader {
 
     static final String FILE_PERCORSO = "ade-percorso.csv";
+    static final String FILE_GREZZO = "ade-registrazione-grezza.csv";
     static final String FILE_DATI = "ade-dati.csv";
     static final String FILE_ERRORI = "ade-errori.csv";
     static final String FILE_XLSX = "ade.xlsx";
@@ -90,7 +91,17 @@ public class AdeDownloader {
                   sel = el.tagName.toLowerCase() + ':text-is(' + JSON.stringify(testo) + ')';
                 } else if (el.tagName === 'INPUT' && el.value) { sel = 'input[value=' + JSON.stringify(el.value) + ']'; }
                 else { sel = percorso(el); }
-                invia('click', sel, '');
+                // se il clic avviene dentro la riga di un elenco, si annota la riga: serve quando il cliente
+                // si sceglie da una lista invece di scriverne il codice fiscale
+                const riga = el.closest('tr, li, [role=row], label');
+                let contesto = '';
+                if (riga) {
+                  const stessi = Array.from(riga.querySelectorAll(el.tagName));
+                  const indice = riga === el ? -1 : stessi.indexOf(el);
+                  contesto = [riga.tagName.toLowerCase(), el.tagName.toLowerCase(), indice,
+                      (riga.innerText || '').replace(/\s+/g, ' ').slice(0, 400)].join('|');
+                }
+                invia('click', sel, contesto);
               }, true);
             })()
             """;
@@ -218,6 +229,15 @@ public class AdeDownloader {
         page.waitForTimeout(500);
         inRegistrazione = false;
 
+        // la registrazione cosi' com'e' viene sempre salvata: se qualcosa non torna si puo' capire cosa e' stato fatto
+        Files.deleteIfExists(dir.resolve(FILE_GREZZO));
+        Csv.accoda(dir.resolve(FILE_GREZZO), List.of("start", partenza, ""));
+        log("Azioni registrate: " + registrati.size());
+        for (String[] p : registrati) {
+            Csv.accoda(dir.resolve(FILE_GREZZO), List.of(p[0], p[1], p[2]));
+            log("  " + p[0] + "  " + p[1] + (p[2].isEmpty() ? "" : "  [" + p[2] + "]"));
+        }
+
         List<List<String>> percorso = new ArrayList<>();
         percorso.add(List.of("start", partenza, ""));
         String[] precedente = null;
@@ -226,16 +246,27 @@ public class AdeDownloader {
             if (precedente != null && p[0].equals("fill") && precedente[0].equals("fill") && p[1].equals(precedente[1])) {
                 percorso.remove(percorso.size() - 1);
             }
-            percorso.add(List.of(p[0], conSegnaposto(p[1], cfEsempio), conSegnaposto(p[2], cfEsempio)));
             precedente = p;
+            if (p[0].equals("click")) {
+                String[] riga = p[2].split("\\|", 4);
+                boolean cfNelSelettore = p[1].toUpperCase().contains(cfEsempio.toUpperCase());
+                if (!cfNelSelettore && riga.length == 4 && riga[3].toUpperCase().contains(cfEsempio.toUpperCase())) {
+                    // clic dentro la riga dell'elenco che riporta il codice fiscale: si ripetera' sulla riga del cliente
+                    percorso.add(List.of("clickriga", riga[0] + ":has-text(\"" + SEGNAPOSTO + "\")", riga[1] + "|" + riga[2]));
+                } else {
+                    percorso.add(List.of("click", conSegnaposto(p[1], cfEsempio), ""));
+                }
+            } else {
+                percorso.add(List.of(p[0], conSegnaposto(p[1], cfEsempio), conSegnaposto(p[2], cfEsempio)));
+            }
         }
         if (percorso.size() < 2) {
             throw new IllegalStateException("Non ho registrato nessuna azione: riprova, cliccando dentro la pagina");
         }
         boolean usaCf = percorso.stream().anyMatch(p -> p.get(1).contains(SEGNAPOSTO) || p.get(2).contains(SEGNAPOSTO));
         if (!usaCf) {
-            throw new IllegalStateException("Nel percorso registrato non compare il codice fiscale " + cfEsempio
-                    + ": non saprei dove inserire quello degli altri clienti. Riprova usando proprio quel codice");
+            throw new IllegalStateException("Nelle azioni registrate (elencate qui sopra e salvate in " + FILE_GREZZO
+                    + ") non compare il codice fiscale " + cfEsempio + ": non so dove mettere quello degli altri clienti");
         }
         for (List<String> p : percorso) {
             Csv.accoda(dir.resolve(FILE_PERCORSO), p);
@@ -263,6 +294,13 @@ public class AdeDownloader {
             switch (tipo) {
                 case "start" -> page.navigate(sel);
                 case "click" -> elemento(sel).click();
+                case "clickriga" -> {
+                    // valore = "tag|indice" dell'elemento da cliccare dentro la riga; indice -1 = la riga stessa
+                    String[] dentro = valore.split("\\|");
+                    Locator riga = elemento(sel);
+                    int indice = Integer.parseInt(dentro[1]);
+                    (indice < 0 ? riga : riga.locator(dentro[0]).nth(indice)).click();
+                }
                 case "fill" -> elemento(sel).fill(valore);
                 case "select" -> elemento(sel).selectOption(valore);
                 case "enter" -> elemento(sel).press("Enter");
